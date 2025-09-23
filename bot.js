@@ -1,8 +1,10 @@
 const { Telegraf } = require('telegraf');
+const express = require('express');
 const fetch = require('node-fetch');
 
 // ✅ Replace with your actual bot token
-const bot = new Telegraf(process.env.BOT_TOKEN || 'your-telegram-bot-token');
+const BOT_TOKEN = process.env.BOT_TOKEN || 'your-telegram-bot-token';
+const bot = new Telegraf(BOT_TOKEN);
 
 // 🧠 Swap simulator
 function simulateSwap(x, y, dx, fee = 0.003) {
@@ -89,5 +91,13 @@ bot.command('validate', async (ctx) => {
   }
 });
 
-// ✅ Launch bot
-bot.launch();
+// 🌐 Webhook server for Render
+const app = express();
+app.use(bot.webhookCallback('/telegram'));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, async () => {
+  const url = process.env.RENDER_EXTERNAL_URL || `https://your-render-url.com`;
+  await bot.telegram.setWebhook(`${url}/telegram`);
+  console.log(`🚀 Bot listening on ${url}/telegram`);
+});
