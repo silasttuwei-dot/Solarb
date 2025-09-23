@@ -1,5 +1,6 @@
 const { Telegraf } = require('telegraf');
 const express = require('express');
+const fetch = require('node-fetch');
 const { getTokenMeta } = require('./tokenMeta');
 const { getBestRoutes } = require('./jupiter');
 const { estimatePnL } = require('./pnl');
@@ -10,15 +11,8 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
 app.use(bot.webhookCallback('/telegram'));
 
-// 🔧 TEMPORARILY DISABLED CHAT ID RESTRICTION FOR DEBUGGING
-// bot.use((ctx, next) => {
-//   if (ctx.chat.id.toString() !== process.env.CHAT_ID) return;
-//   return next();
-// });
-
 // 🎛️ Inline Button Dashboard
 bot.start((ctx) => {
-  console.log('Received /start');
   ctx.reply(
     '👋 Welcome to your Solana Arbitrage Bot!\nChoose an action below:',
     {
@@ -27,17 +21,101 @@ bot.start((ctx) => {
           [{ text: '🔍 Scan Token', callback_data: 'scan' }],
           [{ text: '📡 Watch Token', callback_data: 'watch' }],
           [{ text: '📈 Top ROI Tokens', callback_data: 'top' }],
-          [{ text: '🧪 Scan Meme List', callback_data: 'scanlist' }]
+          [{ text: '🧪 Scan Meme List', callback_data: 'scanlist' }],
+          [{ text: '🧠 Validate Token', callback_data: 'validate' }]
         ]
       }
     }
   );
 });
 
+// 🔁 Swap simulator
+function simulateSwap(x, y, dx, fee = 0.003) {
+  const dxAfterFee = dx * (1 - fee);
+  const dy = (dxAfterFee * y) / (x + dxAfterFee);
+  return dy;
+}
+
+// 🔍 Orca pool finder
+async function findOrcaPoolForMint(tokenMint) {
+  const res = await fetch('https://api.orca.so/pools');
+  const pools = await res.json();
+
+  for (const pool of pools) {
+    const { tokenA, tokenB, address } = pool;
+    const isSolPair =
+      tokenA.mint === 'So11111111111111111111111111111111111111112' ||
+      tokenB.mint === 'So11111111111111111111111111111111111111112';
+
+    const isTargetMint =
+      tokenA.mint === tokenMint || tokenB.mint === tokenMint;
+
+    if (isSolPair && isTargetMint) {
+      return {
+        poolAddress: address,
+        tokenA,
+        tokenB
+      };
+    }
+  }
+
+  return null;
+}
+
+// 🧠 /validate command
+bot.command('validate', async (ctx) => {
+  const mint = ctx.message.text.split(' ')[1];
+  if (!mint) return ctx.reply('❗ Please provide a token mint address.');
+
+  try {
+    const poolInfo = await findOrcaPoolForMint(mint);
+    if (!poolInfo) return ctx.reply('❌ No Orca pool found for this token.');
+
+    const rpcUrl = 'https://api.mainnet-beta.solana.com';
+    const res = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getAccountInfo',
+        params: [poolInfo.poolAddress, { encoding: 'base64' }]
+      })
+    });
+
+    const data = await res.json();
+    const buffer = Buffer.from(data.result.value.data[0], 'base64');
+
+    const reserveA = buffer.readBigUInt64LE(64);
+    const reserveB = buffer.readBigUInt64LE(72);
+
+    const isSolA = poolInfo.tokenA.mint === 'So11111111111111111111111111111111111111112';
+    const solReserve = isSolA ? reserveA : reserveB;
+    const tokenReserve = isSolA ? reserveB : reserveA;
+
+    const sol = Number(solReserve) / 1e9;
+    const token = Number(tokenReserve) / Math.pow(10, poolInfo.tokenA.decimals || 6);
+    const inputAmount = 1;
+
+    const buyAmount = simulateSwap(sol, token, inputAmount);
+    const sellAmount = simulateSwap(token, sol, buyAmount);
+    const roi = (((sellAmount - inputAmount) / inputAmount) * 100).toFixed(2);
+
+    ctx.reply(`
+✅ Token: ${poolInfo.tokenA.symbol === 'SOL' ? poolInfo.tokenB.symbol : poolInfo.tokenA.symbol}
+💱 Buy: 1 SOL → ${buyAmount.toFixed(4)} tokens
+💸 Sell: ${buyAmount.toFixed(4)} tokens → ${sellAmount.toFixed(4)} SOL
+📊 ROI: ${roi}%
+✅ Liquidity: ${token.toFixed(0)} tokens in pool
+    `);
+  } catch (err) {
+    console.error('Error in /validate:', err);
+    ctx.reply('❌ Validation failed. Pool may be missing or RPC unreachable.');
+  }
+});
+
 // 🔁 /scan command
 bot.command('scan', async (ctx) => {
-  console.log('Received /scan command:', ctx.message.text);
-
   const input = ctx.message.text.split(' ')[1];
   if (!input) return ctx.reply('❗ Please provide a token mint address.');
 
@@ -57,12 +135,7 @@ bot.command('scan', async (ctx) => {
 🧪 ${sim}
 ${meta.symbol === 'UNKNOWN' ? '⚠️ Token metadata not found — using default values.' : ''}
     `);
-
-    if (parseFloat(pnl.roi) > 10 && process.env.CHAT_ID) {
-      bot.telegram.sendMessage(process.env.CHAT_ID, `🔥 High ROI Alert!\nToken: $${meta.symbol}\nROI: ${pnl.roi}%`);
-    }
   } catch (err) {
-    console.error('Error during scan:', err);
     ctx.reply(`❌ Scan failed: ${err.message}`);
   }
 });
@@ -86,107 +159,40 @@ bot.command('watch', async (ctx) => {
   }
 });
 
-// 📈 /top command — real-time tradeable arbitrage
+// 📈 /top command
 bot.command('top', async (ctx) => {
-  const tokenList = [
-    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
-    'Es9vMFrzaCERz2wVRdA7z5iYkZLZtq5XyXk1F6Z7Z7Z7', // USDT
-    'So11111111111111111111111111111111111111112', // SOL
-    '9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E', // BTC
-    '7vfCXTqQjWbvwZz3YtYkJzvJ6U9zJzvJzvJzvJzvJzvJ'  // Example meme
-  ];
-
+  const tokenList = await fetch('https://token.jup.ag/all').then(res => res.json());
+  const amount = 1_000_000_000;
   let results = [];
 
-  for (const mint of tokenList) {
-    try {
-      const meta = await getTokenMeta(mint);
-      const routes = await getBestRoutes(mint);
-      const pnl = estimatePnL(routes.buy, routes.sell);
-      const liquidity = Math.min(routes.buy.volume || 0, routes.sell.volume || 0);
+  for (const token of tokenList.slice(0, 100)) {
+    const mint = token.address;
+    const symbol = token.symbol || 'UNKNOWN';
 
-      if (liquidity > 1000 && parseFloat(pnl.roi) > 1) {
+    try {
+      const buyRes = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${mint}&amount=${amount}`);
+      const sellRes = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${mint}&outputMint=So11111111111111111111111111111111111111112&amount=${amount}`);
+      const buyData = await buyRes.json();
+      const sellData = await sellRes.json();
+
+      if (!buyData.routes?.length || !sellData.routes?.length) continue;
+
+      const buyPrice = buyData.outAmount / amount;
+      const sellPrice = sellData.outAmount / amount;
+      const roi = (((sellPrice - buyPrice) / buyPrice) * 100).toFixed(2);
+      const liquidity = Math.min(
+        buyData.routes[0].marketInfos[0]?.liquidity || 0,
+        sellData.routes[0].marketInfos[0]?.liquidity || 0
+      );
+      const slippage = Math.max(
+        parseFloat(buyData.priceImpactPct || '0'),
+        parseFloat(sellData.priceImpactPct || '0')
+      );
+
+      if (parseFloat(roi) > 1 && liquidity > 1000 && slippage < 1) {
         results.push({
-          symbol: meta.symbol,
-          buy: routes.buy,
-          sell: routes.sell,
-          roi: pnl.roi,
-          liquidity
-        });
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  results.sort((a, b) => parseFloat(b.roi) - parseFloat(a.roi));
-  const top = results.slice(0, 3).map((t, i) => `
-${i + 1}. $${t.symbol}
-💱 Buy: ${t.buy.dex} @ ${t.buy.price} SOL
-💸 Sell: ${t.sell.dex} @ ${t.sell.price} SOL
-📊 ROI: ${t.roi}%
-✅ Tradeable with $${t.liquidity} liquidity
-  `).join('\n');
-
-  ctx.reply(`📈 Top Tradeable Arbitrage Opportunities\n${top || '❌ No profitable routes found.'}`);
-});
-
-// 🧪 /scanlist command
-bot.command('scanlist', async (ctx) => {
-  const memeMints = [
-    'G9mnvwgHtXYuBH1U7oYj2qF94x57xPvCkUJfpumpump',
-    '9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E',
-    'Es9vMFrzaCERz2wVRdA7z5iYkZLZtq5XyXk1F6Z7Z7Z7'
-  ];
-
-  let results = [];
-
-  for (const mint of memeMints) {
-    try {
-      const routes = await getBestRoutes(mint);
-      const pnl = estimatePnL(routes.buy, routes.sell);
-      results.push(`✅ ${mint} — ROI: ${pnl.roi}%`);
-    } catch {
-      results.push(`❌ ${mint} — No liquidity`);
-    }
-  }
-
-  ctx.reply(`🧪 Scan Results:\n${results.join('\n')}`);
-});
-
-// 🎛️ Handle Button Actions
-bot.on('callback_query', async (ctx) => {
-  const action = ctx.callbackQuery.data;
-  console.log('Button pressed:', action);
-
-  switch (action) {
-    case 'scan':
-      ctx.reply('🔍 Send /scan <token_mint> to simulate arbitrage.');
-      break;
-    case 'watch':
-      ctx.reply('📡 Send /watch <token_mint> to track liquidity and ROI.');
-      break;
-    case 'top':
-      ctx.reply('📈 Send /top to view high-ROI tokens.');
-      break;
-    case 'scanlist':
-      ctx.reply('🧪 Send /scanlist to scan meme tokens for liquidity.');
-      break;
-    default:
-      ctx.reply('❓ Unknown action.');
-  }
-});
-
-// 🧪 Fallback listener
-bot.on('message', (ctx) => {
-  if (!ctx.message.text.startsWith('/')) {
-    console.log('Received message:', ctx.message.text);
-    ctx.reply('✅ Bot is alive. Use /start to access the dashboard.');
-  }
-});
-
-// 🌐 Webhook server for Render
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Bot listening on port ${PORT}`);
-});
+          symbol,
+          buy: buyData.routes[0].marketInfos[0].label,
+          sell: sellData.routes[0].marketInfos[0].label,
+          buyPrice: buyPrice.toFixed(6),
+          sellPrice: sellPrice.to
