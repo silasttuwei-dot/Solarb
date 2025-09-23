@@ -10,15 +10,22 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
 app.use(bot.webhookCallback('/telegram'));
 
-// Restrict access to your chat ID
-bot.use((ctx, next) => {
-  if (ctx.chat.id.toString() !== process.env.CHAT_ID) return;
-  return next();
+// 🔧 TEMPORARILY DISABLED CHAT ID RESTRICTION FOR DEBUGGING
+// bot.use((ctx, next) => {
+//   if (ctx.chat.id.toString() !== process.env.CHAT_ID) return;
+//   return next();
+// });
+
+// 🔍 DEBUG LISTENER TO CONFIRM BOT IS RECEIVING MESSAGES
+bot.on('message', (ctx) => {
+  console.log('Received message:', ctx.message.text);
+  ctx.reply('✅ Bot is alive and received your message.');
 });
 
+// 🔁 MAIN SCAN COMMAND
 bot.command('scan', async (ctx) => {
   const input = ctx.message.text.split(' ')[1];
-  if (!input) return ctx.reply('Please provide a token mint address.');
+  if (!input) return ctx.reply('❗ Please provide a token mint address.');
 
   try {
     const meta = await getTokenMeta(input);
@@ -36,16 +43,18 @@ bot.command('scan', async (ctx) => {
 🧪 ${sim}
     `);
 
-    // Alert if ROI is high
-    if (parseFloat(pnl.roi) > 10) {
+    // 🔔 OPTIONAL ALERT FOR HIGH ROI
+    if (parseFloat(pnl.roi) > 10 && process.env.CHAT_ID) {
       bot.telegram.sendMessage(process.env.CHAT_ID, `🔥 High ROI Alert!\nToken: $${meta.symbol}\nROI: ${pnl.roi}%`);
     }
   } catch (err) {
-    ctx.reply('Error scanning token. Check the address and try again.');
+    console.error('Error during scan:', err);
+    ctx.reply('❌ Error scanning token. Check the address and try again.');
   }
 });
 
+// 🌐 RENDER WEBHOOK SERVER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Bot listening on port ${PORT}`);
+  console.log(`🚀 Bot listening on port ${PORT}`);
 });
