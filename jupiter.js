@@ -9,6 +9,10 @@ async function getBestRoutes(tokenMint) {
   const buyData = await buyRes.json();
   const sellData = await sellRes.json();
 
+  if (!buyData.routes?.length || !sellData.routes?.length) {
+    throw new Error('No swap routes found — token may lack liquidity.');
+  }
+
   return {
     buy: {
       dex: buyData.routes[0].marketInfos[0].label,
