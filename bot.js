@@ -43,6 +43,7 @@ bot.command('scan', async (ctx) => {
 📊 PnL: +${pnl.profit} SOL (ROI: ${pnl.roi}%)
 ⚙️ Execution: Simulated only
 🧪 ${sim}
+${meta.symbol === 'UNKNOWN' ? '⚠️ Token metadata not found — using default values.' : ''}
     `);
 
     // 🔔 Optional alert for high ROI
@@ -51,7 +52,7 @@ bot.command('scan', async (ctx) => {
     }
   } catch (err) {
     console.error('Error during scan:', err);
-    ctx.reply('❌ Error scanning token. Check the address and try again.');
+    ctx.reply(`❌ Scan failed: ${err.message}`);
   }
 });
 
