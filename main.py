@@ -21,9 +21,13 @@ async def startup_event():
     telegram_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_contract))
-    # Set the webhook on Telegram's side
-    await telegram_app.bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Webhook set to {WEBHOOK_URL}")
+    # Only set the webhook if not already set
+    info = await telegram_app.bot.get_webhook_info()
+    if info.url != WEBHOOK_URL:
+        await telegram_app.bot.set_webhook(WEBHOOK_URL)
+        logger.info(f"Webhook set to {WEBHOOK_URL}")
+    else:
+        logger.info(f"Webhook already set to {WEBHOOK_URL}")
 
 @app.post("/webhook")
 async def webhook(request: Request):
