@@ -13,9 +13,9 @@ function simulateSwap(x, y, dx, fee = 0.003) {
   return dy;
 }
 
-// 🔍 Orca pool finder
+// 🔍 Orca pool finder using GitHub registry
 async function findOrcaPoolForMint(tokenMint) {
-  const res = await fetch('https://api.orca.so/pools');
+  const res = await fetch('https://raw.githubusercontent.com/orca-so/whirlpool-registry/main/pools.json');
   const pools = await res.json();
 
   for (const pool of pools) {
@@ -97,7 +97,7 @@ app.use(bot.webhookCallback('/telegram'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  const url = process.env.RENDER_EXTERNAL_URL || `https://your-render-url.com`;
+  const url = process.env.RENDER_EXTERNAL_URL || 'https://your-render-url.com';
   await bot.telegram.setWebhook(`${url}/telegram`);
   console.log(`🚀 Bot listening on ${url}/telegram`);
 });
