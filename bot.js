@@ -2,7 +2,6 @@ const { Telegraf } = require('telegraf');
 const express = require('express');
 const fetch = require('node-fetch');
 
-// ✅ Replace with your actual bot token
 const BOT_TOKEN = process.env.BOT_TOKEN || 'your-telegram-bot-token';
 const bot = new Telegraf(BOT_TOKEN);
 
@@ -13,11 +12,21 @@ function simulateSwap(x, y, dx, fee = 0.003) {
   return dy;
 }
 
-// 🔍 Orca pool finder using GitHub registry with safe parsing
+// 🔍 Orca pool finder with safe JSON parsing
 async function findOrcaPoolForMint(tokenMint) {
   const res = await fetch('https://raw.githubusercontent.com/orca-so/whirlpool-registry/main/pools.json');
-  const text = await res.text();
-  const pools = JSON.parse(text.trim());
+  const rawText = await res.text();
+
+  const jsonStart = rawText.indexOf('[');
+  const jsonEnd = rawText.lastIndexOf(']') + 1;
+  const jsonString = rawText.slice(jsonStart, jsonEnd);
+
+  let pools;
+  try {
+    pools = JSON.parse(jsonString);
+  } catch (err) {
+    throw new Error('Failed to parse Orca pool registry JSON');
+  }
 
   for (const pool of pools) {
     const { tokenA, tokenB, address } = pool;
