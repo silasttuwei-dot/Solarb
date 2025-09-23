@@ -5,6 +5,23 @@ const fetch = require('node-fetch');
 const BOT_TOKEN = process.env.BOT_TOKEN || 'your-telegram-bot-token';
 const bot = new Telegraf(BOT_TOKEN);
 
+// 🌐 Registry URL
+const POOL_REGISTRY_URL = 'https://silasttuwei-dot.github.io/orca-pools/pools.json';
+let cachedPools = [];
+
+// 🔁 Load and cache registry
+async function loadPoolRegistry() {
+  try {
+    const res = await fetch(POOL_REGISTRY_URL);
+    cachedPools = await res.json();
+    console.log(`✅ Loaded ${cachedPools.length} pools`);
+  } catch (err) {
+    console.error('❌ Failed to load pool registry:', err);
+  }
+}
+setInterval(loadPoolRegistry, 30 * 60 * 1000);
+loadPoolRegistry();
+
 // 🧠 Swap simulator
 function simulateSwap(x, y, dx, fee = 0.003) {
   const dxAfterFee = dx * (1 - fee);
@@ -12,19 +29,19 @@ function simulateSwap(x, y, dx, fee = 0.003) {
   return dy;
 }
 
-// 🔒 Hardcoded Orca pool fallback
+// 🔍 Pool finder with fallback
 function findOrcaPoolForMint(tokenMint) {
-  const POOLS = [
-    {
-      poolAddress: '8sFqzZ5eZkZ7ZzZ5eZkZ7ZzZ5eZkZ7ZzZ5eZkZ7ZzZ5eZkZ7Zz', // ✅ Verified SOL/USDC Whirlpool pool
-      tokenA: { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', decimals: 9 },
-      tokenB: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', decimals: 6 }
-    }
-  ];
+  const fallbackPool = {
+    poolAddress: '8sFqzZ5eZkZ7ZzZ5eZkZ7ZzZ5eZkZ7ZzZ5eZkZ7ZzZ5eZkZ7Zz',
+    tokenA: { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', decimals: 9 },
+    tokenB: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', decimals: 6 }
+  };
 
-  return POOLS.find(pool =>
+  const match = cachedPools.find(pool =>
     pool.tokenA.mint === tokenMint || pool.tokenB.mint === tokenMint
   );
+
+  return match || fallbackPool;
 }
 
 // 🧪 /validate command
@@ -34,7 +51,7 @@ bot.command('validate', async (ctx) => {
 
   try {
     const poolInfo = findOrcaPoolForMint(mint);
-    if (!poolInfo) return ctx.reply('❌ No hardcoded Orca pool found for this token.');
+    if (!poolInfo) return ctx.reply('❌ No pool found for this token.');
 
     const rpcUrl = 'https://api.mainnet-beta.solana.com';
     const res = await fetch(rpcUrl, {
