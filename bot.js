@@ -1,10 +1,11 @@
 import requests
+import math
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import os
-import math
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# ✅ Set your bot token
+BOT_TOKEN = os.getenv("BOT_TOKEN") or "your-telegram-bot-token"
 RPC_URL = "https://api.mainnet-beta.solana.com"
 
 # 🧠 Swap simulator
@@ -26,7 +27,7 @@ def find_orca_pool(token_mint):
             return pool
     return None
 
-# 🧠 /validate command
+# 🧪 /validate command
 async def validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) == 0:
         await update.message.reply_text("❗ Please provide a token mint address.")
@@ -81,7 +82,7 @@ async def validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Validation failed: {str(e)}")
 
-# 🌐 Launch bot
+# 🚀 Launch bot
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("validate", validate))
