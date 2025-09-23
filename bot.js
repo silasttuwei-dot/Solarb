@@ -13,25 +13,26 @@ function simulateSwap(x, y, dx, fee = 0.003) {
   return dy;
 }
 
-// 🔍 Orca pool finder using Whirlpool registry
+// 🔍 Orca pool finder using GitHub registry with safe parsing
 async function findOrcaPoolForMint(tokenMint) {
-  const res = await fetch('https://api.mainnet.orca.so/v1/whirlpool/list');
-  const { whirlpools } = await res.json();
+  const res = await fetch('https://raw.githubusercontent.com/orca-so/whirlpool-registry/main/pools.json');
+  const text = await res.text();
+  const pools = JSON.parse(text.trim());
 
-  for (const pool of whirlpools) {
-    const { tokenMintA, tokenMintB, address } = pool;
+  for (const pool of pools) {
+    const { tokenA, tokenB, address } = pool;
     const isSolPair =
-      tokenMintA === 'So11111111111111111111111111111111111111112' ||
-      tokenMintB === 'So11111111111111111111111111111111111111112';
+      tokenA.mint === 'So11111111111111111111111111111111111111112' ||
+      tokenB.mint === 'So11111111111111111111111111111111111111112';
 
     const isTargetMint =
-      tokenMintA === tokenMint || tokenMintB === tokenMint;
+      tokenA.mint === tokenMint || tokenB.mint === tokenMint;
 
     if (isSolPair && isTargetMint) {
       return {
         poolAddress: address,
-        tokenA: { mint: tokenMintA },
-        tokenB: { mint: tokenMintB }
+        tokenA,
+        tokenB
       };
     }
   }
@@ -71,7 +72,7 @@ bot.command('validate', async (ctx) => {
     const tokenReserve = isSolA ? reserveB : reserveA;
 
     const sol = Number(solReserve) / 1e9;
-    const token = Number(tokenReserve) / 1e6; // Default to 6 decimals
+    const token = Number(tokenReserve) / Math.pow(10, poolInfo.tokenA.decimals || 6);
     const inputAmount = 1;
 
     const buyAmount = simulateSwap(sol, token, inputAmount);
@@ -79,7 +80,7 @@ bot.command('validate', async (ctx) => {
     const roi = (((sellAmount - inputAmount) / inputAmount) * 100).toFixed(2);
 
     ctx.reply(`
-✅ Token Mint: ${mint}
+✅ Token: ${poolInfo.tokenA.symbol === 'SOL' ? poolInfo.tokenB.symbol : poolInfo.tokenA.symbol}
 💱 Buy: 1 SOL → ${buyAmount.toFixed(4)} tokens
 💸 Sell: ${buyAmount.toFixed(4)} tokens → ${sellAmount.toFixed(4)} SOL
 📊 ROI: ${roi}%
