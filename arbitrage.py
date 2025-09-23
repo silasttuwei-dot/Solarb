@@ -1,4 +1,3 @@
-import asyncio
 from dex import fetch_prices
 
 async def scan_arbitrage_opportunities(contract_address):
