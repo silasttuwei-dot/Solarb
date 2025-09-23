@@ -16,14 +16,16 @@ app.use(bot.webhookCallback('/telegram'));
 //   return next();
 // });
 
-// 🔍 DEBUG LISTENER TO CONFIRM BOT IS RECEIVING MESSAGES
-bot.on('message', (ctx) => {
-  console.log('Received message:', ctx.message.text);
-  ctx.reply('✅ Bot is alive and received your message.');
+// 👋 /start command
+bot.start((ctx) => {
+  console.log('Received /start');
+  ctx.reply('👋 Welcome! Send /scan <token_mint> to simulate arbitrage.');
 });
 
-// 🔁 MAIN SCAN COMMAND
+// 🔁 /scan command
 bot.command('scan', async (ctx) => {
+  console.log('Received /scan command:', ctx.message.text);
+
   const input = ctx.message.text.split(' ')[1];
   if (!input) return ctx.reply('❗ Please provide a token mint address.');
 
@@ -43,7 +45,7 @@ bot.command('scan', async (ctx) => {
 🧪 ${sim}
     `);
 
-    // 🔔 OPTIONAL ALERT FOR HIGH ROI
+    // 🔔 Optional alert for high ROI
     if (parseFloat(pnl.roi) > 10 && process.env.CHAT_ID) {
       bot.telegram.sendMessage(process.env.CHAT_ID, `🔥 High ROI Alert!\nToken: $${meta.symbol}\nROI: ${pnl.roi}%`);
     }
@@ -53,7 +55,15 @@ bot.command('scan', async (ctx) => {
   }
 });
 
-// 🌐 RENDER WEBHOOK SERVER
+// 🧪 Fallback listener for non-command messages
+bot.on('message', (ctx) => {
+  if (!ctx.message.text.startsWith('/scan')) {
+    console.log('Received message:', ctx.message.text);
+    ctx.reply('✅ Bot is alive. Use /scan <token_mint> to simulate arbitrage.');
+  }
+});
+
+// 🌐 Webhook server for Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Bot listening on port ${PORT}`);
