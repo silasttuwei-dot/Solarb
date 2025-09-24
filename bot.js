@@ -1,18 +1,12 @@
 // bot.js
+const express = require('express');
 const { Telegraf } = require('telegraf');
 const { getArbitrageOpportunities } = require('./arbitrageEngine');
 
-const BOT_TOKEN = process.env.BOT_TOKEN || 'your-telegram-bot-token';
+const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
-// Format helpers
-const formatPercentage = (num) => `${parseFloat(num).toFixed(2)}%`;
-const formatNumber = (num) =>
-  num >= 1e6 ? `$${(num / 1e6).toFixed(1)}M` :
-  num >= 1e3 ? `$${(num / 1e3).toFixed(1)}K` :
-  `$${num.toFixed(2)}`;
-
-// /arbs command
+// Telegram command: /arbs
 bot.command('arbs', async (ctx) => {
   try {
     const opportunities = await getArbitrageOpportunities();
@@ -25,8 +19,8 @@ bot.command('arbs', async (ctx) => {
 🔁 *${o.pair}*
 💱 Buy on ${o.buyExchange} @ ${o.buyPrice}
 💸 Sell on ${o.sellExchange} @ ${o.sellPrice}
-📊 ROI: ${formatPercentage(o.roi)}
-📦 Volume: ${formatNumber(o.volume)}
+📊 ROI: ${o.roi}%
+📦 Volume: $${o.volume.toLocaleString()}
 ${o.risk.color} Risk: ${o.risk.level}
 ⏱ Time Left: ${o.timeLeft}
     `);
@@ -38,4 +32,14 @@ ${o.risk.color} Risk: ${o.risk.level}
   }
 });
 
+// Launch bot
 bot.launch();
+
+// 👇 Express server to bind a port (required by Render)
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => res.send('Solarb bot is running'));
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
