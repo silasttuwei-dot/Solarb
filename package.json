@@ -1,11 +1,18 @@
 {
   "name": "solarb-bot",
   "version": "1.0.0",
+  "description": "Telegram bot for tracking arbitrage opportunities across Solana DEXs",
+  "main": "bot.js",
   "scripts": {
-    "start": "echo 'Vercel uses api/telegram.js'"
+    "start": "node bot.js"
   },
   "dependencies": {
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
     "node-fetch": "^2.6.7",
     "telegraf": "^4.12.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
