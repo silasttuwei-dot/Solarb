@@ -1,16 +1,17 @@
 // multiRoutePrices.js
 const fetch = require('node-fetch');
-
 const TOKENS = {
   SOL:  { mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
+  USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
   USDT: { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
   RAY:  { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', decimals: 6 },
   ORCA: { mint: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE', decimals: 6 },
   MNGO: { mint: 'MangoCzJ36AjZyKwVj3VnYU4GTonjfVEnJmvvWaxLac', decimals: 6 },
   STEP: { mint: 'StepAscQoEioFxxWGnh2sLBDFp9d8rvKz2Yp39iDpyT', decimals: 6 }
+  // SRM removed only
 };
 
-const USDC_MINT = TOKENS.USDC.mint;
+if const USDC_MINT = TOKENS.USDC.mint;
 const QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
 
 /* ---------------------------------------------------------- */
