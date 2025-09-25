@@ -1,9 +1,4 @@
-const {
-  fetchJupiterPrices,
-  fetchRaydiumPairs,
-  fetchOrcaPools,
-  fetchSerumMarkets
-} = require('./dexFetchers');
+const { fetchAllPrices } = require('./jupiterPriceFetcher');
 
 function formatOpportunity(pair, buyExchange, sellExchange, buyPrice, sellPrice) {
   const roi = (((sellPrice - buyPrice) / buyPrice) * 100).toFixed(2);
@@ -32,26 +27,20 @@ function getRiskLevel(roi) {
 }
 
 async function getArbitrageOpportunities() {
-  const prices = await fetchJupiterPrices();
-  const tokens = Object.keys(prices);
+  const prices = await fetchAllPrices(); // [{ name: 'SOL', price: 19.23 }, ...]
   const opportunities = [];
 
-  for (let i = 0; i < tokens.length - 1; i++) {
-    const tokenA = tokens[i];
-    const tokenB = tokens[i + 1];
+  for (let i = 0; i < prices.length - 1; i++) {
+    const tokenA = prices[i];
+    const tokenB = prices[i + 1];
 
-    const priceA = prices[tokenA]?.price;
-    const priceB = prices[tokenB]?.price;
-
-    if (!priceA || !priceB) continue;
-
-    const buyPrice = priceA;
-    const sellPrice = priceB;
+    const buyPrice = tokenA.price;
+    const sellPrice = tokenB.price;
     const roi = ((sellPrice - buyPrice) / buyPrice) * 100;
 
     if (roi > 0.5) {
       opportunities.push(
-        formatOpportunity(`${tokenA}/${tokenB}`, 'Jupiter', 'Raydium', buyPrice, sellPrice)
+        formatOpportunity(`${tokenA.name}/${tokenB.name}`, 'Jupiter', 'Jupiter', buyPrice, sellPrice)
       );
     }
   }
