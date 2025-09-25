@@ -1,4 +1,4 @@
-// multiRoutePrices.js  (dust-fixed, realistic ROI)
+// multiRoutePrices.js  (liquidity & volume filtered)
 const fetch = require('node-fetch');
 
 const TOKENS = {
@@ -15,7 +15,7 @@ const USDC_MINT = TOKENS.USDC.mint;
 const QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
 
 async function getQuote(mintIn, mintOut, amount) {
-  const url = `${QUOTE_URL}?inputMint=${mintIn}&outputMint=${mintOut}&amount=${amount}&slippageBps=50&limit=1`;
+  const url = `${QUOTE_URL}?inputMint=${mintIn}&outputMint=${mintOut}&amount=${amount}&slippageBps=50&limit=1&showLiquidity=true`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
@@ -46,7 +46,7 @@ async function fetchJupiterPrices() {
     })
   );
 
-  /* 2.  reverse (USDC → token)  – 10 USDC, dust-clamped */
+  /* 2.  reverse (USDC → token)  – 10 USDC, liquidity & volume filtered */
   await Promise.all(
     Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
       if (mint === USDC_MINT) return;
@@ -55,10 +55,16 @@ async function fetchJupiterPrices() {
         const rev = await getQuote(USDC_MINT, mint, usdcAmount);
         const leg = rev.routePlan[0];
         const dex = leg.swapInfo.label;
+
+        /* ---- filters: ≥ 500 k liquidity & ≥ 100 k daily volume ---- */
+        const liquidityUsd = Number(leg.swapInfo.liquidity || 0);
+        const dailyVolUsd  = Number(leg.swapInfo.volume24h || 0);
+        if (liquidityUsd < 500_000 || dailyVolUsd < 100_000) return; // skip quietly
+
         const tokensBack = Number(leg.swapInfo.outAmount);
         if (tokensBack === 0) throw new Error('zero tokens');
-        const askRaw = (10 ** decimals) / tokensBack; // USDC per token
-        const ask = Math.max(askRaw, 0.000001); // dust clamp
+        const askRaw = (10 ** decimals) / tokensBack;
+        const ask = Math.max(askRaw, 0.000001);
         if (!book[dex]) book[dex] = {};
         if (!book[dex][sym]) book[dex][sym] = {};
         book[dex][sym].ask = ask;
