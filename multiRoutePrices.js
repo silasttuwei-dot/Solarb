@@ -1,4 +1,6 @@
-SRM= require('node-fetch');
+// multiRoutePrices.js
+const fetch = require('node-fetch');
+
 const TOKENS = {
   SOL:  { mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
   USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
@@ -7,15 +9,13 @@ const TOKENS = {
   ORCA: { mint: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE', decimals: 6 },
   MNGO: { mint: 'MangoCzJ36AjZyKwVj3VnYU4GTonjfVEnJmvvWaxLac', decimals: 6 },
   STEP: { mint: 'StepAscQoEioFxxWGnh2sLBDFp9d8rvKz2Yp39iDpyT', decimals: 6 }
-  // SRM removed only
+  // SRM removed – delisted
 };
 
- const USDC_MINT = TOKENS.USDC.mint;
+const USDC_MINT = TOKENS.USDC.mint;
 const QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
 
-/* ---------------------------------------------------------- */
-/*  helper – single quote                                     */
-/* ---------------------------------------------------------- */
+/* ---------- helper ---------- */
 async function getQuote(mintIn, mintOut, amount) {
   const url = `${QUOTE_URL}?inputMint=${mintIn}&outputMint=${mintOut}&amount=${amount}&slippageBps=50&limit=1`;
   const r = await fetch(url);
@@ -23,51 +23,52 @@ async function getQuote(mintIn, mintOut, amount) {
   return r.json();
 }
 
-/* ---------------------------------------------------------- */
-/*  main – returns LIVE arbitrage edges                       */
-/* ---------------------------------------------------------- */
+/* ---------- main ---------- */
 async function fetchJupiterPrices() {
   const book = {}; // dex -> token -> {bid, ask, usdValue}
 
-  /* ---------- 1.  forward quote (token → USDC)  ------------- */
+  /* 1.  forward (token → USDC)  – skip USDC itself */
   await Promise.all(
     Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
+      if (mint === USDC_MINT) return; // silence circular warning
       try {
-        const amt = String(1_000 * (10 ** decimals)); // 1 000 tokens
+        const amt = String(1_000 * (10 ** decimals));
         const fwd = await getQuote(mint, USDC_MINT, amt);
         const leg = fwd.routePlan[0];
         const dex = leg.swapInfo.label;
         if (!book[dex]) book[dex] = {};
         book[dex][sym] = {
-          bid: Number(leg.swapInfo.outAmount) / 1_000, // USDC per token
+          bid: Number(leg.swapInfo.outAmount) / 1_000,
           ask: null,
           usdValue: Number(fwd.swapUsdValue)
         };
       } catch (e) {
-        console.warn('Fwd skip', sym, e.message);
+        if (!e.message.includes('CIRCULAR_ARBITRAGE_IS_DISABLED'))
+          console.warn('Fwd skip', sym, e.message);
       }
     })
   );
 
-  /* ---------- 2.  reverse quote (USDC → token)  ------------- */
+  /* 2.  reverse (USDC → token)  – skip USDC itself */
   await Promise.all(
     Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
+      if (mint === USDC_MINT) return; // silence circular warning
       try {
-        const amt = '1000000'; // 1 USDC
-        const rev = await getQuote(USDC_MINT, mint, amt);
+        const rev = await getQuote(USDC_MINT, mint, '1000000');
         const leg = rev.routePlan[0];
         const dex = leg.swapInfo.label;
         const tokensBack = Number(leg.swapInfo.outAmount);
         if (!book[dex]) book[dex] = {};
         if (!book[dex][sym]) book[dex][sym] = {};
-        book[dex][sym].ask = 1 / (tokensBack / (10 ** decimals)); // USDC per token
+        book[dex][sym].ask = 1 / (tokensBack / (10 ** decimals));
       } catch (e) {
-        console.warn('Rev skip', sym, e.message);
+        if (!e.message.includes('CIRCULAR_ARBITRAGE_IS_DISABLED'))
+          console.warn('Rev skip', sym, e.message);
       }
     })
   );
 
-  /* ---------- 3.  cross-dex arb ----------------------------- */
+  /* 3.  cross-dex arb  */
   const opps = [];
   const dexes = Object.keys(book);
   for (const tok of Object.keys(TOKENS)) {
