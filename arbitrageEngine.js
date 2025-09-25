@@ -30,25 +30,12 @@ async function getArbitrageOpportunities() {
   const opps = [];
 
   Object.entries(prices).forEach(([token, info]) => {
-    if (!info.route || !info.price) return;
+    if (!info.routes || info.routes.length < 2) return;
 
-    const legs = info.route
-      .filter(r => r.swapInfo && r.swapInfo.inputMint && r.swapInfo.outputMint)
-      .map(r => ({
-        dex: r.dex,
-        mintIn: r.swapInfo.inputMint,
-        mintOut: r.swapInfo.outputMint,
-        in: Number(r.swapInfo.inAmount),
-        out: Number(r.swapInfo.outAmount),
-        fee: Number(r.swapInfo.feeAmount || 0)
-      }));
-
-    for (let i = 0; i < legs.length; i++) {
-      for (let j = i + 1; j < legs.length; j++) {
-        const a = legs[i];
-        const b = legs[j];
-
-        if (a.mintIn !== b.mintIn || a.mintOut !== b.mintOut) continue;
+    for (let i = 0; i < info.routes.length; i++) {
+      for (let j = i + 1; j < info.routes.length; j++) {
+        const a = info.routes[i];
+        const b = info.routes[j];
 
         const [cheap, expensive] = a.out < b.out ? [a, b] : [b, a];
         const priceDiff = (expensive.out - cheap.out) / cheap.out;
