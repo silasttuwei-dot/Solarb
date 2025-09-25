@@ -19,10 +19,10 @@ function registerBotHandlers(bot) {
     try {
       const opps = await getArbitrageOpportunities();
       const reply = formatTelegramMessage(opps);
-      await bot.sendMessage(msg.chat.id, reply, { parse_mode: 'Markdown' });
+      await bot.telegram.sendMessage(msg.chat.id, reply, { parse_mode: 'Markdown' });
     } catch (err) {
       console.error('Handler error:', err);
-      await bot.sendMessage(msg.chat.id, 'Sorry, something went wrong 🤖');
+      await bot.telegram.sendMessage(msg.chat.id, 'Sorry, something went wrong 🤖');
     }
   });
 
@@ -39,8 +39,6 @@ function registerBotHandlers(bot) {
 
   process.on('uncaughtException', async (err) => {
     console.error('Uncaught exception:', err);
-    // Optional: notify admin
-    // await bot.telegram.sendMessage(ADMIN_CHAT_ID, `🚨 Bot crashed: ${err.message}`);
     process.exit(1);
   });
 }
