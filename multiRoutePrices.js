@@ -1,5 +1,4 @@
-// multiRoutePrices.js
-const fetch = require('node-fetch');
+SRM= require('node-fetch');
 const TOKENS = {
   SOL:  { mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
   USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
@@ -11,7 +10,7 @@ const TOKENS = {
   // SRM removed only
 };
 
-if const USDC_MINT = TOKENS.USDC.mint;
+ const USDC_MINT = TOKENS.USDC.mint;
 const QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
 
 /* ---------------------------------------------------------- */
