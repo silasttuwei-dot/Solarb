@@ -1,4 +1,4 @@
-cat > dexPrices.js <<'EOF'
+// dexPrices.js
 const { fetchJupiterPrices } = require('./multiRoutePrices');
 
 module.exports = {
@@ -7,4 +7,3 @@ module.exports = {
   fetchOrcaPools:    fetchJupiterPrices,
   fetchSerumMarkets: fetchJupiterPrices
 };
-EOF
