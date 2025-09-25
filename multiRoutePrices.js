@@ -1,173 +1,112 @@
-// multiRoutePrices.js — Cross-token, cross-DEX arbitrage scanner (matches Create.xyz "All opportunities")
+// multiRoutePrices.js  (loose filters for demonstration)
 const fetch = require('node-fetch');
 
-// --- Token Definitions ---
 const TOKENS = {
-  SOL:  { mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
-  USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
+  SOL:  { mint: 'So11111111111111111111111111111111111111111112', decimals: 9 },
   USDT: { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
   RAY:  { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', decimals: 6 },
-  JUP:  { mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', decimals: 6 },
-  BONK: { mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB2r', decimals: 5 },
-  WIF:  { mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', decimals: 6 },
-  PYTH: { mint: 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3', decimals: 8 },
+  ORCA: { mint: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE', decimals: 6 },
+  STEP: { mint: 'StepAscQoEioFxxWGnh2sLBDFp9d8rvKz2Yp39iDpyT', decimals: 6 }
 };
 
-// --- Supported DEXes (used to isolate direct routes) ---
-const DEXES = [
-  'Raydium',
-  'Orca',
-  'Phoenix',
-  'Serum',
-  'Jupiter Aggregator',
-  'Meteora',
-  'GooseFX',
-  'Lifinity',
-  'Clone',
-  'Symmetry'
-];
-
-// --- Configuration ---
+const USDC_MINT = TOKENS.USDC.mint;
 const QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
-const TRADE_SIZE_USD = 10; // Used for price discovery (not execution size)
-const MIN_NET_ROI_BPS = 15; // Minimum net ROI: 0.15%
-const ESTIMATED_FEES_BPS = 10; // Estimated total fees: 0.10%
 
-// --- Token Pairs to Monitor (matches your dashboard) ---
-const TOKEN_PAIRS = [
-  { base: 'USDT', quote: 'RAY' },
-  { base: 'USDC', quote: 'RAY' },
-  { base: 'SOL', quote: 'USDT' },
-  { base: 'SOL', quote: 'RAY' },
-  { base: 'SOL', quote: 'JUP' },
-  { base: 'SOL', quote: 'USDC' },
-  { base: 'USDT', quote: 'JUP' },
-  { base: 'USDC', quote: 'USDT' },
-  { base: 'RAY', quote: 'BONK' },
-  { base: 'USDT', quote: 'BONK' },
-  { base: 'RAY', quote: 'JUP' },
-  { base: 'SOL', quote: 'WIF' },
-  { base: 'BONK', quote: 'PYTH' },
-  { base: 'SOL', quote: 'PYTH' },
-];
-
-// --- Fetch Direct Quote from a Specific DEX ---
-async function getDirectQuote(inputMint, outputMint, amountRaw, targetDex) {
-  const otherDexes = DEXES.filter(d => d !== targetDex).join(',');
-  const url = `${QUOTE_URL}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountRaw}&onlyDirectRoutes=true&excludeDexes=${encodeURIComponent(otherDexes)}&showLiquidity=true`;
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
-
-  try {
-    const r = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!r.ok) {
-      const text = await r.text();
-      throw new Error(`HTTP ${r.status}: ${text}`);
-    }
-    return await r.json();
-  } catch (e) {
-    clearTimeout(timeoutId);
-    if (e.name === 'AbortError') {
-      throw new Error('Timeout');
-    }
-    throw e;
-  }
+async function getQuote(mintIn, mintOut, amount) {
+  const url = `${QUOTE_URL}?inputMint=${mintIn}&outputMint=${mintOut}&amount=${amount}&slippageBps=50&limit=1&showLiquidity=true`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
-// --- Extract Price from Quote ---
-function extractPrice(quote, inputToken, outputToken) {
-  if (!quote?.routePlan?.length) return null;
-  const leg = quote.routePlan[0];
-  if (!leg.swapInfo) return null;
-
-  const outAmountRaw = Number(leg.swapInfo.outAmount);
-  if (isNaN(outAmountRaw) || outAmountRaw <= 0) return null;
-
-  const outputDecimals = TOKENS[outputToken].decimals;
-  const outputAmount = outAmountRaw / (10 ** outputDecimals);
-  const price = TRADE_SIZE_USD / outputAmount; // e.g., USDT per RAY
-
-  return price;
-}
-
-// --- Main Arbitrage Scanner ---
 async function fetchJupiterPrices() {
   const book = {};
 
-  // Initialize book structure: book[dex][base][quote] = price
-  for (const dex of DEXES) {
-    book[dex] = {};
-    for (const { base, quote } of TOKEN_PAIRS) {
-      if (!book[dex][base]) book[dex][base] = {};
-      book[dex][base][quote] = null;
-    }
-  }
-
-  // Fetch direct quotes for each pair on each DEX
-  for (const { base, quote } of TOKEN_PAIRS) {
-    for (const dex of DEXES) {
+  /* 1.  forward (token → USDC)  – 1 000 tokens, skip USDC */
+  await Promise.all(
+    Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
+      if (mint === USDC_MINT) return;
       try {
-        const inputMint = TOKENS[base].mint;
-        const outputMint = TOKENS[quote].mint;
-        const amountRaw = (TRADE_SIZE_USD * (10 ** TOKENS[base].decimals)).toString();
-
-        const quoteData = await getDirectQuote(inputMint, outputMint, amountRaw, dex);
-        const price = extractPrice(quoteData, base, quote);
-
-        if (price !== null) {
-          book[dex][base][quote] = price;
-        }
+        const amt = String(1_000 * (10 ** decimals));
+        const fwd = await getQuote(mint, USDC_MINT, amt);
+        const leg = fwd.routePlan[0];
+        const dex = leg.swapInfo.label;
+        if (!book[dex]) book[dex] = {};
+        book[dex][sym] = {
+          bid: Number(leg.swapInfo.outAmount) / 1_000,
+          ask: null,
+          usdValue: Number(fwd.swapUsdValue)
+        };
       } catch (e) {
-        // Silently skip failed DEX/pair combos (common for unsupported pairs)
-        continue;
+        if (!e.message.includes('CIRCULAR_ARBITRAGE_IS_DISABLED'))
+          console.warn('Fwd skip', sym, e.message);
       }
-    }
-  }
+    })
+  );
 
-  // Detect arbitrage opportunities
-  const opportunities = [];
+  /* 2.  reverse (USDC → token)  – 10 USDC, liquidity & volume filtered */
+  await Promise.all(
+    Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
+      if (mint === USDC_MINT) return;
+      try {
+        const usdcAmount = '10000000'; // 10 USDC
+        const rev = await getQuote(USDC_MINT, mint, usdcAmount);
+        const leg = rev.routePlan[0];
+        const dex = leg.swapInfo.label;
 
-  for (const { base, quote } of TOKEN_PAIRS) {
-    for (const buyDex of DEXES) {
-      for (const sellDex of DEXES) {
+        /* ---- filters: ≥ 50 k liquidity & ≥ 10 k daily volume ---- */
+        const liquidityUsd = Number(leg.swapInfo.liquidity || 0);
+        const dailyVolUsd  = Number(leg.swapInfo.volume24h || 0);
+        if (liquidityUsd < 50_000 || dailyVolUsd < 10_000) return; // skip quietly
+
+        const tokensBack = Number(leg.swapInfo.outAmount);
+        if (tokensBack === 0) throw new Error('zero tokens');
+        const askRaw = (10 ** decimals) / tokensBack;
+        const ask = Math.max(askRaw, 0.000001);
+        if (!book[dex]) book[dex] = {};
+        if (!book[dex][sym]) book[dex][sym] = {};
+        book[dex][sym].ask = ask;
+      } catch (e) {
+        if (!e.message.includes('CIRCULAR_ARBITRAGE_IS_DISABLED'))
+          console.warn('Rev skip', sym, e.message);
+      }
+    })
+  );
+
+  /* 3.  cross-dex arb  */
+  const opps = [];
+  const dexes = Object.keys(book);
+  for (const tok of Object.keys(TOKENS)) {
+    for (const buyDex of dexes) {
+      for (const sellDex of dexes) {
         if (buyDex === sellDex) continue;
+        const buy = book[buyDex][tok];
+        const sell = book[sellDex][tok];
+        if (!buy?.ask || !sell?.bid) continue;
 
-        const buyPrice = book[buyDex]?.[base]?.[quote];
-        const sellPrice = book[sellDex]?.[base]?.[quote];
+        const gross = (sell.bid - buy.ask) / buy.ask;
+        const net = gross - 0.001; // 0.1 % fee proxy
+        const usdProfit = net * 10; // normalised on 10 USD
 
-        if (!buyPrice || !sellPrice || sellPrice <= buyPrice) continue;
+        if (net < 0.0005 || usdProfit < 1) continue; // 0.05 % net, > 1 USD
 
-        const grossRoi = (sellPrice - buyPrice) / buyPrice;
-        const netRoi = grossRoi - (ESTIMATED_FEES_BPS / 10_000);
-
-        if (netRoi < MIN_NET_ROI_BPS / 10_000) continue;
-
-        const usdProfit = TRADE_SIZE_USD * netRoi;
-        if (usdProfit < 0.1) continue; // Ignore negligible profits
-
-        const risk = netRoi > 0.05 ? 'High' : netRoi > 0.02 ? 'Medium' : 'Low';
-
-        opportunities.push({
-          pair: `${base}/${quote}`,
+        opps.push({
+          pair: `${tok}/USDC`,
           buyExchange: buyDex,
           sellExchange: sellDex,
-          buyPrice: buyPrice.toFixed(8),
-          sellPrice: sellPrice.toFixed(8),
-          roiPct: (netRoi * 100).toFixed(2),
-          usdProfit: usdProfit.toFixed(2),
-          timeLeft: '30 sec',
-          risk
+          buyPrice: buy.ask,
+          sellPrice: sell.bid,
+          roi: (net * 100).toFixed(2),
+          volume: Math.floor(usdProfit),
+          timeLeft: `${Math.floor(Math.random() * 10) + 1} min`,
+          risk: net > 0.05 ? { level: 'High', color: '🔴' }
+                : net > 0.02 ? { level: 'Medium', color: '🟠' }
+                : { level: 'Low', color: '🟢' }
         });
       }
     }
   }
-
-  // Sort by ROI (descending) and limit to top 20
-  return opportunities
-    .sort((a, b) => parseFloat(b.roiPct) - parseFloat(a.roiPct))
-    .slice(0, 20);
+  return opps.sort(((a, b) => parseFloat(b.roi) - parseFloat(a.roi)).slice(0, 20));
 }
 
 module.exports = { fetchJupiterPrices };
