@@ -1,6 +1,5 @@
 const fetch = require('node-fetch');
 
-// --- token catalogue ---------------------------------------------------------
 const TOKENS = {
   SOL:  { mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
   USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
@@ -15,7 +14,6 @@ const TOKENS = {
 const USDC_MINT = TOKENS.USDC.mint;
 const QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
 
-// --- core helper -------------------------------------------------------------
 async function getQuote(mintIn, decimals) {
   const amount = String(10 ** decimals);
   const url = `${QUOTE_URL}?inputMint=${mintIn}&outputMint=${USDC_MINT}&amount=${amount}&slippageBps=50`;
@@ -24,7 +22,6 @@ async function getQuote(mintIn, decimals) {
   return r.json();
 }
 
-// --- public wrappers ---------------------------------------------------------
 async function fetchJupiterPrices() {
   const entries = await Promise.all(
     Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
@@ -34,10 +31,9 @@ async function fetchJupiterPrices() {
         return [sym, {
           price: 1 / price,
           usdValue: q.swapUsdValue,
-          route: q.routePlan.map(r => ({
-            dex: r.swapInfo.label,
-            bps: r.bps,
-            out: r.swapInfo.outAmount
+          routes: q.routes.map(route => ({
+            dex: route.marketInfos.map(m => m.label).join(' → '),
+            out: route.outAmount
           }))
         }];
       } catch (e) {
