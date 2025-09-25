@@ -1,8 +1,9 @@
-// multiRoutePrices.js  (loose filters for demonstration)
+// multiRoutePrices.js
 const fetch = require('node-fetch');
 
 const TOKENS = {
   SOL:  { mint: 'So11111111111111111111111111111111111111111112', decimals: 9 },
+  USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
   USDT: { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
   RAY:  { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', decimals: 6 },
   ORCA: { mint: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE', decimals: 6 },
@@ -106,7 +107,7 @@ async function fetchJupiterPrices() {
       }
     }
   }
-  return opps.sort(((a, b) => parseFloat(b.roi) - parseFloat(a.roi)).slice(0, 20));
+  return opps.sort((a, b) => parseFloat(b.roi) - parseFloat(a.roi)).slice(0, 20);
 }
 
 module.exports = { fetchJupiterPrices };
