@@ -51,7 +51,7 @@ async function fetchJupiterPrices() {
     Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
       if (mint === USDC_MINT) return;
       try {
-        const usdcAmount = '10_000_000'; // 10 USDC
+        const usdcAmount = '10000000'; // 10 USDC
         const rev = await getQuote(USDC_MINT, mint, usdcAmount);
         const leg = rev.routePlan[0];
         const dex = leg.swapInfo.label;
