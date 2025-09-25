@@ -1,4 +1,4 @@
-// multiRoutePrices.js
+// multiRoutePrices.js  (dust-fixed, realistic ROI)
 const fetch = require('node-fetch');
 
 const TOKENS = {
@@ -9,13 +9,11 @@ const TOKENS = {
   ORCA: { mint: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE', decimals: 6 },
   MNGO: { mint: 'MangoCzJ36AjZyKwVj3VnYU4GTonjfVEnJmvvWaxLac', decimals: 6 },
   STEP: { mint: 'StepAscQoEioFxxWGnh2sLBDFp9d8rvKz2Yp39iDpyT', decimals: 6 }
-  // SRM removed – delisted
 };
 
 const USDC_MINT = TOKENS.USDC.mint;
 const QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
 
-/* ---------- helper ---------- */
 async function getQuote(mintIn, mintOut, amount) {
   const url = `${QUOTE_URL}?inputMint=${mintIn}&outputMint=${mintOut}&amount=${amount}&slippageBps=50&limit=1`;
   const r = await fetch(url);
@@ -23,14 +21,13 @@ async function getQuote(mintIn, mintOut, amount) {
   return r.json();
 }
 
-/* ---------- main ---------- */
 async function fetchJupiterPrices() {
   const book = {}; // dex -> token -> {bid, ask, usdValue}
 
-  /* 1.  forward (token → USDC)  – skip USDC itself */
+  /* 1.  forward (token → USDC)  – 1 000 tokens, skip USDC */
   await Promise.all(
     Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
-      if (mint === USDC_MINT) return; // silence circular warning
+      if (mint === USDC_MINT) return;
       try {
         const amt = String(1_000 * (10 ** decimals));
         const fwd = await getQuote(mint, USDC_MINT, amt);
@@ -49,18 +46,22 @@ async function fetchJupiterPrices() {
     })
   );
 
-  /* 2.  reverse (USDC → token)  – skip USDC itself */
+  /* 2.  reverse (USDC → token)  – 10 USDC, dust-clamped */
   await Promise.all(
     Object.entries(TOKENS).map(async ([sym, { mint, decimals }]) => {
-      if (mint === USDC_MINT) return; // silence circular warning
+      if (mint === USDC_MINT) return;
       try {
-        const rev = await getQuote(USDC_MINT, mint, '1000000');
+        const usdcAmount = '10_000_000'; // 10 USDC
+        const rev = await getQuote(USDC_MINT, mint, usdcAmount);
         const leg = rev.routePlan[0];
         const dex = leg.swapInfo.label;
         const tokensBack = Number(leg.swapInfo.outAmount);
+        if (tokensBack === 0) throw new Error('zero tokens');
+        const askRaw = (10 ** decimals) / tokensBack; // USDC per token
+        const ask = Math.max(askRaw, 0.000001); // dust clamp
         if (!book[dex]) book[dex] = {};
         if (!book[dex][sym]) book[dex][sym] = {};
-        book[dex][sym].ask = 1 / (tokensBack / (10 ** decimals));
+        book[dex][sym].ask = ask;
       } catch (e) {
         if (!e.message.includes('CIRCULAR_ARBITRAGE_IS_DISABLED'))
           console.warn('Rev skip', sym, e.message);
@@ -81,9 +82,9 @@ async function fetchJupiterPrices() {
 
         const gross = (sell.bid - buy.ask) / buy.ask;
         const net = gross - 0.001; // 0.1 % fee proxy
-        const usdProfit = net * 1_000;
+        const usdProfit = net * 10; // normalised on 10 USD
 
-        if (net < 0.0015 || usdProfit < 1) continue; // 0.15 % net
+        if (net < 0.0015 || usdProfit < 1) continue; // 0.15 % net, > 1 USD
 
         opps.push({
           pair: `${tok}/USDC`,
