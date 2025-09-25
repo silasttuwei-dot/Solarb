@@ -1,6 +1,5 @@
 const { fetchJupiterPrices } = require('./multiDexPrices');
 
-// Format a single arbitrage opportunity
 function formatOpportunity(pair, buyExchange, sellExchange, buyPrice, sellPrice, usdValue, roi) {
   const volume = Math.floor(usdValue);
   const timeLeft = `${Math.floor(Math.random() * 10) + 1} min`;
@@ -19,7 +18,6 @@ function formatOpportunity(pair, buyExchange, sellExchange, buyPrice, sellPrice,
   };
 }
 
-// Assign risk level based on ROI
 function getRiskLevel(roi) {
   const r = parseFloat(roi);
   if (r > 5) return { level: 'High', color: '🔴' };
@@ -27,11 +25,6 @@ function getRiskLevel(roi) {
   return { level: 'Low', color: '🟢' };
 }
 
-/* ------------------------------------------------------------------ */
-/* 1. Extract all individual legs from Jupiter routePlan              */
-/* 2. Compare every leg vs every other leg for same input→output      */
-/* 3. Build arb signal only when priceDiff > 0.3% and > $1 USD        */
-/* ------------------------------------------------------------------ */
 async function getArbitrageOpportunities() {
   const prices = await fetchJupiterPrices();
   const opps = [];
@@ -39,28 +32,27 @@ async function getArbitrageOpportunities() {
   Object.entries(prices).forEach(([token, info]) => {
     if (!info.route || !info.price) return;
 
-    // Collect all unique legs
-    const legs = info.route.map(r => ({
-      dex: r.dex,
-      mintIn: r.swapInfo.inputMint,
-      mintOut: r.swapInfo.outputMint,
-      in: Number(r.swapInfo.inAmount),
-      out: Number(r.swapInfo.outAmount),
-      fee: Number(r.swapInfo.feeAmount || 0)
-    }));
+    const legs = info.route
+      .filter(r => r.swapInfo && r.swapInfo.inputMint && r.swapInfo.outputMint)
+      .map(r => ({
+        dex: r.dex,
+        mintIn: r.swapInfo.inputMint,
+        mintOut: r.swapInfo.outputMint,
+        in: Number(r.swapInfo.inAmount),
+        out: Number(r.swapInfo.outAmount),
+        fee: Number(r.swapInfo.feeAmount || 0)
+      }));
 
-    // Compare every leg vs every other leg
     for (let i = 0; i < legs.length; i++) {
       for (let j = i + 1; j < legs.length; j++) {
         const a = legs[i];
         const b = legs[j];
 
-        // Must be same directional swap
         if (a.mintIn !== b.mintIn || a.mintOut !== b.mintOut) continue;
 
         const [cheap, expensive] = a.out < b.out ? [a, b] : [b, a];
         const priceDiff = (expensive.out - cheap.out) / cheap.out;
-        const usdProfit = priceDiff * 1000; // normalized to $1,000 trade
+        const usdProfit = priceDiff * 1000;
 
         if (priceDiff < 0.003 || usdProfit < 1) continue;
 
@@ -79,7 +71,6 @@ async function getArbitrageOpportunities() {
     }
   });
 
-  // Sort by descending ROI
   return opps.sort((x, y) => parseFloat(y.roi) - parseFloat(x.roi)).slice(0, 10);
 }
 
