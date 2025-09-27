@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: solana-arbitrage-dashboard
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: npm run build
+    startCommand: npm start
+    repo: https://github.com/your-username/your-repo-name
+    branch: main
+    rootDir: .
+    envVars:
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: JUPITER_API
+        sync: false
