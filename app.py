@@ -1,6 +1,6 @@
+import os
 from flask import Flask, jsonify, render_template_string
 import requests
-import time
 
 app = Flask(__name__)
 
@@ -73,10 +73,12 @@ def dashboard():
         <style>
             body { background: #0f0c14; color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 1rem; }
             h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+            p { color: #a0a0a0; font-size: 0.95rem; margin-bottom: 1.5rem; }
             table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
             th, td { padding: 0.75rem 0.5rem; text-align: left; border-bottom: 1px solid #2a2438; font-size: 0.9rem; }
             .profit { color: #ff6b6b; font-weight: bold; }
             .last-update { color: #4ecdc4; font-size: 0.85rem; margin-top: 1rem; }
+            .no-data { text-align: center; color: #6c757d; padding: 1.5rem; }
         </style>
     </head>
     <body>
@@ -100,7 +102,9 @@ def dashboard():
                     tbody.innerHTML = '';
                     
                     if (data.length === 0) {
-                        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#6c757d">No opportunities >0.5% profit</td></tr>`;
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td colspan="4" class="no-data">No opportunities >0.5% profit</td>`;
+                        tbody.appendChild(row);
                     } else {
                         data.forEach(op => {
                             const row = document.createElement('tr');
@@ -115,7 +119,9 @@ def dashboard():
                     }
                     document.getElementById('time').textContent = new Date().toLocaleTimeString();
                 } catch (e) {
-                    console.error(e);
+                    console.error("Fetch error:", e);
+                    const tbody = document.querySelector('tbody');
+                    tbody.innerHTML = `<tr><td colspan="4" class="no-data">Error loading data</td></tr>`;
                 }
             }
             update();
@@ -126,4 +132,5 @@ def dashboard():
     """)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
